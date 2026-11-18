@@ -28,7 +28,9 @@ option(BLEEP_BUILD_TESTS  "Build the JUCE-free DSP tests" ON)
 # future products.
 # ---------------------------------------------------------------------------
 add_library(bleep_dsp STATIC
-    Source/dsp/SynthEngine.cpp)
+    Source/dsp/SynthEngine.cpp
+    Source/seq/Pattern.cpp
+    Source/seq/Sequencer.cpp)
 target_include_directories(bleep_dsp PUBLIC Source)
 target_compile_features(bleep_dsp PUBLIC cxx_std_17)
 set_target_properties(bleep_dsp PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -68,7 +70,8 @@ if(BLEEP_BUILD_PLUGIN)
     target_sources(BLEEP001 PRIVATE
         Source/plugin/Parameters.cpp
         Source/plugin/PluginProcessor.cpp
-        Source/plugin/PluginEditor.cpp)
+        Source/plugin/PluginEditor.cpp
+        Source/plugin/StepGrid.cpp)
 
     target_compile_definitions(BLEEP001 PUBLIC
         JUCE_WEB_BROWSER=0
@@ -95,6 +98,10 @@ if(BLEEP_BUILD_TESTS)
     add_executable(bleep_tests tests/EngineTests.cpp)
     target_link_libraries(bleep_tests PRIVATE bleep_dsp)
     add_test(NAME engine COMMAND bleep_tests)
+
+    add_executable(bleep_seq_tests tests/SequencerTests.cpp)
+    target_link_libraries(bleep_seq_tests PRIVATE bleep_dsp)
+    add_test(NAME sequencer COMMAND bleep_seq_tests)
 endif()
 
 option(BLEEP_BUILD_PLUGIN_TESTS "Build headless tests of the JUCE processor" OFF)

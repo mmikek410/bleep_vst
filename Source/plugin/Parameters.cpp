@@ -28,6 +28,11 @@ namespace
     }
 }
 
+juce::String noteName (int midiNote)
+{
+    return juce::MidiMessage::getMidiNoteName (juce::jlimit (0, 127, midiNote), true, true, 3);
+}
+
 juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
@@ -48,6 +53,24 @@ juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     layout.add (std::make_unique<Float> (juce::ParameterID { id::outputGain, 1 }, "Output",
                                          juce::NormalisableRange<float> { -48.0f, 6.0f }, -6.0f,
                                          Attributes().withLabel ("dB")));
+
+    // --- Sequencer (new in Phase 2; IDs above are unchanged) ---
+    // Default External keeps Phase 1 projects behaving exactly as before.
+    layout.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { id::seqMode, 2 }, "Seq Mode",
+                                                              juce::StringArray { "External MIDI", "Internal" }, 0));
+    layout.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { id::seqRate, 2 }, "Seq Rate",
+                                                              juce::StringArray { "1/4", "1/8", "1/16", "1/32" },
+                                                              kDefaultRateIndex));
+    layout.add (std::make_unique<juce::AudioParameterInt> (juce::ParameterID { id::seqLength, 2 }, "Seq Length",
+                                                           1, 16, 16));
+    layout.add (std::make_unique<juce::AudioParameterInt> (juce::ParameterID { id::seqRoot, 2 }, "Seq Root",
+                                                           24, 96, 60,
+                                                           juce::AudioParameterIntAttributes()
+                                                               .withStringFromValueFunction ([] (int v, int) { return noteName (v); })));
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::seqGate, 2 }, "Seq Gate",
+                                         juce::NormalisableRange<float> { 5.0f, 100.0f }, 50.0f,
+                                         Attributes().withStringFromValueFunction ([] (float v, int)
+                                             { return juce::String (juce::roundToInt (v)) + " %"; })));
     return layout;
 }
 

@@ -67,9 +67,9 @@ jobs:
         run: cmake --build "$BUILD_DIR" --config Release --target BLEEP001_AU -j "$(sysctl -n hw.ncpu)"
 
       - name: Build tests
-        run: cmake --build "$BUILD_DIR" --config Release --target bleep_tests bleep_plugin_tests -j "$(sysctl -n hw.ncpu)"
+        run: cmake --build "$BUILD_DIR" --config Release --target bleep_tests bleep_seq_tests bleep_plugin_tests -j "$(sysctl -n hw.ncpu)"
 
-      - name: Run tests (DSP engine + headless processor)
+      - name: Run tests (DSP engine, sequencer, headless processor)
         run: ctest --test-dir "$BUILD_DIR" --output-on-failure
 
       - name: Ad-hoc sign and verify bundles

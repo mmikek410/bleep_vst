@@ -2,7 +2,16 @@
 
 Generative FM synthesizer with an integrated step sequencer, made for hypnotic, raw, minimal and groove techno.
 
-**Current status: Phase 1.** A sine voice with an ADSR envelope, 8-voice polyphony, MIDI input, parameters you can automate, and state saved with your Ableton set. See `PROGRESS.md`.
+**Current status: Phase 2, Milestone 1, the internal sequencer.** There's a 16-step sequencer synced to the host, with step on/off, pitch per step, length, rate, root and gate, plus INTERNAL/EXTERNAL modes. It plays the Phase 1 sine/ADSR voice. See `PROGRESS.md`.
+
+## Using the sequencer
+
+- **SEQ: EXTERNAL MIDI / INTERNAL** (header button). In External mode the synth plays incoming MIDI, exactly like Phase 1. In Internal mode the built-in sequencer plays whenever Live's transport runs. Incoming MIDI still plays on top.
+- **Step grid.** Click the top square of a step to switch it on or off, or drag across steps to paint them. Drag up or down in the lower area to set the pitch, from -24 to +24 semitones from ROOT. Double-click the lower area to reset the pitch.
+- **Rate** (1/4, 1/8, 1/16, 1/32), **LENGTH** (1–16 steps; odd lengths give polymetric loops against the bar), **ROOT** and **GATE** (note length as a percentage of a step).
+- **CLEAR** turns every step off.
+- Note names follow Ableton's convention: MIDI 60 = C3.
+- The sequencer follows Live's song position. It stays in sync when you start mid-song, loop, jump or change tempo, and goes silent when Live stops.
 
 ## Requirements (macOS)
 
@@ -45,15 +54,22 @@ Source/dsp/           JUCE-free DSP engine (shared with tests and future product
   Voice.h             one voice: sine oscillator + ADSR (FM and filter arrive in Phase 2)
   SynthEngine.*       8-voice allocation and stealing, output gain smoothing
   Smoother.h          one-pole parameter smoother
+Source/seq/           JUCE-free sequencer
+  Pattern.*           32-step pattern (on, pitch, velocity, probability, gate, ratchet, lock) + text encoding
+  Sequencer.*         host-synced scheduler: step k starts at k * stepPpq, so jumps, loops and tempo changes stay in sync
 Source/plugin/        JUCE wrapper
   Parameters.*        parameter IDs and ranges (IDs must never be renamed)
   PluginProcessor.*   MIDI handling with sample-accurate block splitting, state save/load
-  PluginEditor.*      temporary functional UI
+  PatternStore.h      pattern shared between UI and audio (try-lock on the audio thread, never blocks)
+  StepGrid.*          16-step grid component
+  PluginEditor.*      editor layout
+  Theme.h             colours
 tests/EngineTests.cpp offline render tests (sample rates, block sizes, clicks, NaN, leaks)
+tests/SequencerTests.cpp sequencer timing, mid-song start, loop, tempo change, stop, free-run, length, probability, encoding
 tests/PluginTests.cpp headless processor tests (MIDI to audio, state round trip); -DBLEEP_BUILD_PLUGIN_TESTS=ON
 ```
 
-Design rules: no allocation, locks or I/O on the audio thread. The engine receives note events, so the Phase 3 sequencer will feed the same engine through the same path. State is saved as XML with a `stateVersion` tag so older sets can be upgraded later.
+Design rules: no allocation, blocking locks or I/O on the audio thread. The engine receives note events, so the Phase 3 sequencer will feed the same engine through the same path. State is saved as XML with a `stateVersion` tag: 1 = Phase 1, 2 = adds the sequencer parameters and a `PATTERN` node. Phase 1 sets load with the sequencer off and the default pattern. Parameter IDs are never renamed. The Phase 1 rollback point is the `release/phase1` branch.
 
 ## Developing without the plugin
 
