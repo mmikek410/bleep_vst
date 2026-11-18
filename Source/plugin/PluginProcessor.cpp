@@ -185,6 +185,119 @@ void BleepAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
         buffer.copyFrom (ch, 0, buffer, 0, 0, numSamples);
 }
 
+// ---------------------------------------------------------------------------
+// Generative actions (message thread)
+// ---------------------------------------------------------------------------
+
+bleep::seq::GeneratorSettings BleepAudioProcessor::generatorSettings() const
+{
+    namespace id = bleep::params::id;
+    bleep::seq::GeneratorSettings g;
+    g.density    = apvts.getRawParameterValue (id::genDensity)->load() * 0.01f;
+    g.pitchRange = (int) std::lround (apvts.getRawParameterValue (id::genRange)->load());
+    return g;
+}
+
+int BleepAudioProcessor::patternLength() const
+{
+    // Generate over the visible 16 steps so changing LENGTH later reveals musical material.
+    return bleep::seq::kVisibleSteps;
+}
+
+void BleepAudioProcessor::setParamPlain (const char* paramId, float value)
+{
+    if (auto* p = apvts.getParameter (paramId))
+    {
+        p->beginChangeGesture();
+        p->setValueNotifyingHost (p->convertTo0to1 (value));
+        p->endChangeGesture();
+    }
+}
+
+BleepAudioProcessor::Snapshot BleepAudioProcessor::captureSnapshot() const
+{
+    Snapshot s;
+    s.pattern = patternStore.get();
+    for (size_t i = 0; i < s.sound.size(); ++i)
+        s.sound[i] = apvts.getRawParameterValue (kSoundParams[i])->load();
+    return s;
+}
+
+void BleepAudioProcessor::applySnapshot (const Snapshot& s)
+{
+    patternStore.set (s.pattern);
+    for (size_t i = 0; i < s.sound.size(); ++i)
+        if (std::abs (apvts.getRawParameterValue (kSoundParams[i])->load() - s.sound[i]) > 1.0e-4f)
+            setParamPlain (kSoundParams[i], s.sound[i]);
+}
+
+void BleepAudioProcessor::randomizeSound (bleep::seq::Rng& rng)
+{
+    // Musically safe ranges for short bleeps; no volume or tuning changes.
+    const float u = rng.uniform();
+    setParamPlain (bleep::params::id::attack,  0.5f + 4.0f * rng.uniform() * rng.uniform());   // 0.5-4.5 ms, mostly snappy
+    setParamPlain (bleep::params::id::decay,   40.0f + 560.0f * u * u);                         // 40-600 ms, mostly short
+    setParamPlain (bleep::params::id::release, 30.0f + 270.0f * rng.uniform());                 // 30-300 ms
+}
+
+void BleepAudioProcessor::randomizePattern (std::uint32_t seed)
+{
+    history.push (captureSnapshot());
+    bleep::seq::Rng rng (seed);
+    patternStore.set (bleep::seq::generate (patternStore.get(), generatorSettings(), rng.next(), patternLength()));
+    if (apvts.getRawParameterValue (bleep::params::id::genRandSound)->load() >= 0.5f)
+        randomizeSound (rng);
+}
+
+void BleepAudioProcessor::mutatePattern (std::uint32_t seed)
+{
+    history.push (captureSnapshot());
+    const float amount = apvts.getRawParameterValue (bleep::params::id::genMutate)->load() * 0.01f;
+    patternStore.set (bleep::seq::mutate (patternStore.get(), amount, generatorSettings(), seed, patternLength()));
+}
+
+void BleepAudioProcessor::clearPattern()
+{
+    history.push (captureSnapshot());
+    patternStore.modify ([] (bleep::seq::Pattern& p)
+    {
+        for (auto& s : p.steps)
+            if (! s.locked)
+                s = bleep::seq::Step {};
+    });
+}
+
+void BleepAudioProcessor::beginPatternEdit()
+{
+    if (! pendingEdit.has_value())
+        pendingEdit = captureSnapshot();
+}
+
+void BleepAudioProcessor::endPatternEdit()
+{
+    if (pendingEdit.has_value() && pendingEdit->pattern != patternStore.get())
+        history.push (*pendingEdit);
+    pendingEdit.reset();
+}
+
+bool BleepAudioProcessor::undo()
+{
+    auto current = captureSnapshot();
+    if (! history.undo (current))
+        return false;
+    applySnapshot (current);
+    return true;
+}
+
+bool BleepAudioProcessor::redo()
+{
+    auto current = captureSnapshot();
+    if (! history.redo (current))
+        return false;
+    applySnapshot (current);
+    return true;
+}
+
 juce::AudioProcessorEditor* BleepAudioProcessor::createEditor()
 {
     return new BleepAudioProcessorEditor (*this);
@@ -219,7 +332,7 @@ void BleepAudioProcessor::setStateInformation (const void* data, int sizeInBytes
         pattern.decode (patternTree.getProperty (kPatternData).toString().toStdString());
     tree.removeChild (patternTree, nullptr);
 
-    // Parameters missing from older states (e.g. all seq_* in Phase 1) keep
+    // Parameters missing from older states (e.g. seq_* / gen_* in older sets) keep
     // their defaults, so old projects load with the sequencer off (External).
     apvts.replaceState (tree);
     patternStore.set (pattern);

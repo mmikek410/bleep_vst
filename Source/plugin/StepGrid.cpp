@@ -75,10 +75,17 @@ juce::Rectangle<float> StepGrid::toggleBounds (int step) const
     return c.removeFromTop (juce::jmin (c.getWidth(), c.getHeight() * 0.32f));
 }
 
+juce::Rectangle<float> StepGrid::lockBounds (int step) const
+{
+    auto c = cellBounds (step);
+    c.removeFromTop (toggleBounds (step).getHeight() + 3.0f);
+    return c.removeFromTop (12.0f);
+}
+
 juce::Rectangle<float> StepGrid::pitchBounds (int step) const
 {
     auto c = cellBounds (step);
-    c.removeFromTop (toggleBounds (step).getHeight() + 6.0f);
+    c.removeFromTop (toggleBounds (step).getHeight() + 3.0f + 12.0f + 4.0f);
     return c;
 }
 
@@ -102,10 +109,31 @@ void StepGrid::paint (juce::Graphics& g)
 
         // On/off square.
         auto t = toggleBounds (i).reduced (1.0f);
-        g.setColour ((s.active ? amber : surfaceHi).withMultipliedAlpha (alpha));
+        g.setColour ((s.active ? amber.withMultipliedAlpha (0.45f + 0.55f * s.velocity) : surfaceHi).withMultipliedAlpha (alpha));
         g.fillRect (t);
         g.setColour (outline.withMultipliedAlpha (alpha));
         g.drawRect (t, 1.0f);
+
+        // Lock bar.
+        auto lb = lockBounds (i).reduced (1.0f, 0.0f);
+        g.setColour ((s.locked ? amber.withAlpha (0.55f) : surface).withMultipliedAlpha (alpha));
+        g.fillRect (lb);
+        g.setColour (outline.withMultipliedAlpha (alpha));
+        g.drawRect (lb, 1.0f);
+        if (s.locked)
+        {
+            g.setColour (background.withMultipliedAlpha (alpha));
+            g.setFont (fonts->caption (9.5f));
+            g.drawText ("LOCK", lb, juce::Justification::centred, false);
+        }
+
+        // Probability below 100 %: small marker in the on/off square.
+        if (s.active && s.probability < 1.0f)
+        {
+            g.setColour (background.withMultipliedAlpha (alpha));
+            g.setFont (fonts->value (11.0f));
+            g.drawText (juce::String (juce::roundToInt (s.probability * 100.0f)) + "%", t, juce::Justification::centred, false);
+        }
 
         // Pitch lane: bipolar bar from the centre line.
         auto pb = pitchBounds (i).reduced (1.0f);
@@ -129,14 +157,14 @@ void StepGrid::paint (juce::Graphics& g)
         }
 
         g.setColour ((s.active ? text : textDim).withMultipliedAlpha (alpha));
-        g.setFont (juce::FontOptions (10.0f));
+        g.setFont (fonts->value (12.0f));
         g.drawText (bleep::params::noteName (root + s.pitch), labelArea, juce::Justification::centred, false);
 
         // Playhead.
         if (i == playingStep && inRange)
         {
             g.setColour (amber);
-            g.drawRect (cellBounds (i).reduced (0.0f, 0.0f).withTrimmedBottom (0.0f), 2.0f);
+            g.drawRect (cellBounds (i), 1.5f);
         }
     }
 }
@@ -147,7 +175,16 @@ void StepGrid::mouseDown (const juce::MouseEvent& e)
     if (step < 0)
         return;
 
-    if (toggleBounds (step).contains (e.position))
+    processor.beginPatternEdit();  // every grid gesture is one undo step
+
+    if (lockBounds (step).contains (e.position))
+    {
+        const bool lock = ! pattern.steps[(size_t) step].locked;
+        processor.getPatternStore().modify ([&] (bleep::seq::Pattern& p) { p.steps[(size_t) step].locked = lock; });
+        pattern.steps[(size_t) step].locked = lock;
+        dragMode = DragMode::None;
+    }
+    else if (toggleBounds (step).contains (e.position))
     {
         dragMode = DragMode::Paint;
         paintValue = ! pattern.steps[(size_t) step].active;
@@ -194,6 +231,7 @@ void StepGrid::mouseDrag (const juce::MouseEvent& e)
 
 void StepGrid::mouseUp (const juce::MouseEvent&)
 {
+    processor.endPatternEdit();
     dragMode = DragMode::None;
     dragStep = -1;
     patternVersion = processor.getPatternStore().getVersion();
@@ -204,7 +242,9 @@ void StepGrid::mouseDoubleClick (const juce::MouseEvent& e)
     const int step = stepAt (e.position);
     if (step < 0 || ! pitchBounds (step).contains (e.position))
         return;
+    processor.beginPatternEdit();
     processor.getPatternStore().modify ([&] (bleep::seq::Pattern& p) { p.steps[(size_t) step].pitch = 0; });
     pattern.steps[(size_t) step].pitch = 0;
+    processor.endPatternEdit();
     repaint();
 }

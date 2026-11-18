@@ -1,6 +1,7 @@
 #pragma once
 
 #include "seq/Pattern.h"
+#include "BleepLookAndFeel.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -10,6 +11,7 @@ class BleepAudioProcessor;
 
     Each column is one step:
       - top square: click to switch the step on/off (drag across to paint)
+      - thin bar under it: click to lock/unlock the step (RANDOM/MUTATE/CLEAR skip locked steps)
       - lower area: drag up/down to set the pitch (semitones from root),
         double-click to reset it to the root
     The playing step is outlined in amber. Steps beyond the sequence
@@ -32,12 +34,14 @@ private:
     void timerCallback() override;
     juce::Rectangle<float> cellBounds (int step) const;
     juce::Rectangle<float> toggleBounds (int step) const;
+    juce::Rectangle<float> lockBounds (int step) const;
     juce::Rectangle<float> pitchBounds (int step) const;
     int stepAt (juce::Point<float> p) const;
     int visibleLength() const;
     int rootNote() const;
 
     BleepAudioProcessor& processor;
+    juce::SharedResourcePointer<bleep::ui::Fonts> fonts;
     bleep::seq::Pattern pattern;        // UI copy, refreshed when the store changes
     std::uint32_t patternVersion = 0;
     int playingStep = -1;

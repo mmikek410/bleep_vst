@@ -21,6 +21,12 @@ namespace id
     inline constexpr const char* seqLength  = "seq_length";
     inline constexpr const char* seqRoot    = "seq_root";
     inline constexpr const char* seqGate    = "seq_gate";
+
+    // Phase 2 / Milestone 2: generative controls
+    inline constexpr const char* genDensity   = "gen_density";    // %
+    inline constexpr const char* genRange     = "gen_range";      // semitones
+    inline constexpr const char* genMutate    = "gen_mutate";     // %
+    inline constexpr const char* genRandSound = "gen_rand_sound"; // bool
 }
 
 /** Step length in quarter notes for each seq_rate choice. */

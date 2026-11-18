@@ -214,6 +214,127 @@ int main()
         CHECK (p.getPatternStore().get() == bleep::seq::Pattern::makeDefault(), "phase 1 set should get default pattern");
     }
 
+
+    std::printf ("RANDOM / MUTATE while the host is playing\n");
+    {
+        BleepAudioProcessor p;
+        TestPlayHead ph;
+        p.setPlayHead (&ph);
+        p.setPlayConfigDetails (0, 2, 48000.0, 128);
+        p.prepareToPlay (48000.0, 128);
+        setParam (p, id::seqMode, 1.0f);
+        setParam (p, id::genRandSound, 1.0f);
+        float peak = 0.0f;
+        for (int i = 0; i < 60; ++i)
+        {
+            if (i % 3 == 0) p.randomizePattern ((std::uint32_t) i + 1);
+            else            p.mutatePattern ((std::uint32_t) i + 100);
+            peak = std::max (peak, run (p, &ph, 50, 128, 48000.0));   // ~0.13 s between presses
+        }
+        std::printf ("  peak over 60 presses: %.3f\n", peak);
+        CHECK (peak > 0.02f && peak < 1.0f, "level out of range while generating");
+        ph.playing = false;
+        run (p, &ph, 400, 128, 48000.0);
+        CHECK (silent (run (p, &ph, 16, 128, 48000.0)), "stuck note after generating during playback");
+    }
+
+    std::printf ("RANDOM is deterministic per seed and respects density / locks\n");
+    {
+        BleepAudioProcessor a, b;
+        for (auto* p : { &a, &b }) { setParam (*p, id::genDensity, 50.0f); setParam (*p, id::genRange, 7.0f); }
+        a.getPatternStore().modify ([] (bleep::seq::Pattern& pat) { pat.steps[3] = { true, 5, 0.5f, 1.0f, 1.0f, 1, true }; });
+        b.getPatternStore().set (a.getPatternStore().get());
+        a.randomizePattern (1234);
+        b.randomizePattern (1234);
+        const auto pa = a.getPatternStore().get();
+        CHECK (pa == b.getPatternStore().get(), "same seed differs between instances");
+        CHECK (pa.steps[3].locked && pa.steps[3].pitch == 5, "locked step changed by RANDOM");
+        int active = 0;
+        for (int i = 0; i < 16; ++i) { active += pa.steps[(size_t) i].active ? 1 : 0; CHECK (std::abs (pa.steps[(size_t) i].pitch) <= 7, "pitch outside range"); }
+        CHECK (active == 8, "density 50% wrong active count");
+    }
+
+    std::printf ("UNDO / REDO restore pattern and randomized sound\n");
+    {
+        BleepAudioProcessor p;
+        setParam (p, id::genRandSound, 1.0f);
+        const auto original = p.getPatternStore().get();
+        const float decay0 = getParam (p, id::decay), out0 = getParam (p, id::outputGain), fine0 = getParam (p, id::fineTune);
+        CHECK (! p.canUndo(), "fresh instance has undo");
+
+        p.randomizePattern (7);
+        const auto randomised = p.getPatternStore().get();
+        CHECK (randomised != original, "RANDOM did not change the pattern");
+        CHECK (! near (getParam (p, id::decay), decay0), "RANDOMIZE SOUND did not change decay");
+        CHECK (near (getParam (p, id::outputGain), out0) && near (getParam (p, id::fineTune), fine0),
+               "RANDOMIZE SOUND touched output or tuning");
+
+        setParam (p, id::genMutate, 50.0f);
+        p.mutatePattern (8);
+        const auto mutated = p.getPatternStore().get();
+        CHECK (mutated != randomised, "MUTATE did not change the pattern");
+
+        CHECK (p.undo() && p.getPatternStore().get() == randomised, "undo of MUTATE");
+        CHECK (p.undo() && p.getPatternStore().get() == original, "undo of RANDOM");
+        CHECK (std::abs (getParam (p, id::decay) - decay0) < 0.5f, "undo did not restore decay");
+        CHECK (! p.undo(), "undo past the beginning");
+        CHECK (p.redo() && p.getPatternStore().get() == randomised, "redo RANDOM");
+        CHECK (p.redo() && p.getPatternStore().get() == mutated, "redo MUTATE");
+        CHECK (! p.redo(), "redo past the end");
+
+        p.clearPattern();
+        CHECK (p.undo() && p.getPatternStore().get() == mutated, "undo CLEAR");
+
+        // Grid gesture without a change adds no undo step; with a change it adds one.
+        const auto before = p.getPatternStore().get();
+        p.beginPatternEdit(); p.endPatternEdit();
+        p.undo();
+        CHECK (p.getPatternStore().get() != before, "empty edit should not have been an undo step");
+        p.redo();
+        p.beginPatternEdit();
+        p.getPatternStore().modify ([] (bleep::seq::Pattern& pat) { pat.steps[0].active = ! pat.steps[0].active; });
+        p.endPatternEdit();
+        CHECK (p.undo() && p.getPatternStore().get() == before, "grid edit not undoable");
+    }
+
+    std::printf ("generated pattern and generator settings survive save / reload\n");
+    {
+        BleepAudioProcessor a;
+        setParam (a, id::genDensity, 63.0f);
+        setParam (a, id::genRange, 5.0f);
+        setParam (a, id::genMutate, 80.0f);
+        setParam (a, id::genRandSound, 1.0f);
+        a.randomizePattern (99);
+        a.mutatePattern (100);
+        juce::MemoryBlock blob;
+        a.getStateInformation (blob);
+        BleepAudioProcessor b;
+        b.setStateInformation (blob.getData(), (int) blob.getSize());
+        CHECK (b.getPatternStore().get() == a.getPatternStore().get(), "generated pattern not restored");
+        CHECK (near (getParam (b, id::genDensity), 63.0f) && near (getParam (b, id::genRange), 5.0f)
+               && near (getParam (b, id::genMutate), 80.0f) && near (getParam (b, id::genRandSound), 1.0f),
+               "generator settings not restored");
+        auto xml = juce::AudioProcessor::getXmlFromBinary (blob.getData(), (int) blob.getSize());
+        CHECK (xml->getIntAttribute ("stateVersion") == BleepAudioProcessor::kStateVersion, "state version not written");
+    }
+
+    std::printf ("Milestone 1 (v2) state loads with generator defaults\n");
+    {
+        BleepAudioProcessor a;
+        juce::MemoryBlock blob;
+        a.getStateInformation (blob);
+        auto xml = juce::AudioProcessor::getXmlFromBinary (blob.getData(), (int) blob.getSize());
+        xml->setAttribute ("stateVersion", 2);
+        for (auto* pid : { "gen_density", "gen_range", "gen_mutate", "gen_rand_sound" })
+            if (auto* e = xml->getChildByAttribute ("id", pid))
+                xml->removeChildElement (e, true);
+        juce::MemoryBlock v2;
+        juce::AudioProcessor::copyXmlToBinary (*xml, v2);
+        BleepAudioProcessor b;
+        b.setStateInformation (v2.getData(), (int) v2.getSize());
+        CHECK (near (getParam (b, id::genDensity), 40.0f) && near (getParam (b, id::genRandSound), 0.0f), "v2 state: generator defaults wrong");
+    }
+
     std::printf (failures == 0 ? "PLUGIN TESTS PASSED\n" : "%d PLUGIN TEST FAILURE(S)\n", failures);
     return failures == 0 ? 0 : 1;
 }

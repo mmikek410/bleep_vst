@@ -49,10 +49,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
                                          timeRange (5.0f, 4000.0f, 250.0f), 120.0f, msAttributes()));
     layout.add (std::make_unique<Float> (juce::ParameterID { id::fineTune, 1 }, "Fine Tune",
                                          juce::NormalisableRange<float> { -100.0f, 100.0f }, 0.0f,
-                                         Attributes().withLabel ("ct")));
+                                         Attributes().withLabel ("ct")
+                                             .withStringFromValueFunction ([] (float v, int)
+                                                 { const int c = juce::roundToInt (v); return (c > 0 ? "+" : "") + juce::String (c) + " ct"; })));
     layout.add (std::make_unique<Float> (juce::ParameterID { id::outputGain, 1 }, "Output",
                                          juce::NormalisableRange<float> { -48.0f, 6.0f }, -6.0f,
-                                         Attributes().withLabel ("dB")));
+                                         Attributes().withLabel ("dB")
+                                             .withStringFromValueFunction ([] (float v, int)
+                                                 { return juce::String (v, 1) + " dB"; })));
 
     // --- Sequencer (new in Phase 2; IDs above are unchanged) ---
     // Default External keeps Phase 1 projects behaving exactly as before.
@@ -71,6 +75,18 @@ juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
                                          juce::NormalisableRange<float> { 5.0f, 100.0f }, 50.0f,
                                          Attributes().withStringFromValueFunction ([] (float v, int)
                                              { return juce::String (juce::roundToInt (v)) + " %"; })));
+
+    // --- Generative (new in Milestone 2) ---
+    auto percent = Attributes().withStringFromValueFunction ([] (float v, int) { return juce::String (juce::roundToInt (v)) + " %"; });
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::genDensity, 3 }, "Density",
+                                         juce::NormalisableRange<float> { 0.0f, 100.0f, 1.0f }, 40.0f, percent));
+    layout.add (std::make_unique<juce::AudioParameterInt> (juce::ParameterID { id::genRange, 3 }, "Pitch Range",
+                                                           0, 24, 12,
+                                                           juce::AudioParameterIntAttributes()
+                                                               .withStringFromValueFunction ([] (int v, int) { return "+/-" + juce::String (v) + " st"; })));
+    layout.add (std::make_unique<Float> (juce::ParameterID { id::genMutate, 3 }, "Mutation",
+                                         juce::NormalisableRange<float> { 0.0f, 100.0f, 1.0f }, 25.0f, percent));
+    layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { id::genRandSound, 3 }, "Randomize Sound", false));
     return layout;
 }
 

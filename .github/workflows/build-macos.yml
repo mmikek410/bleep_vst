@@ -38,7 +38,7 @@ jobs:
             plugin_name: BLEEP 001
             artifact: BLEEP001-macOS-arm64
             au_code: Bl02
-            tests: bleep_tests bleep_seq_tests bleep_plugin_tests
+            tests: bleep_tests bleep_seq_tests bleep_gen_tests bleep_plugin_tests
           - variant: classic
             src_dir: classic
             plugin_name: BLEEP 001 Classic
@@ -94,6 +94,24 @@ jobs:
 
       - name: Run tests
         run: ctest --test-dir "$BUILD_DIR" --output-on-failure
+
+      - name: UI screenshot (main only)
+        if: matrix.variant == 'main'
+        continue-on-error: true
+        run: |
+          cmake --build "$BUILD_DIR" --config Release --target bleep_ui_snapshot -j "$(sysctl -n hw.ncpu)"
+          mkdir -p ui-screenshots
+          "$BUILD_DIR/bleep_ui_snapshot" "$GITHUB_WORKSPACE/ui-screenshots"
+
+      - name: Upload UI screenshot
+        if: matrix.variant == 'main'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: BLEEP001-UI-screenshots
+          path: ui-screenshots/*.png
+          if-no-files-found: ignore
+          retention-days: 30
 
       - name: Ad-hoc sign and verify bundles
         run: |
@@ -178,6 +196,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+          pattern: BLEEP001-*macOS-arm64
 
       - name: Install both like a user would
         run: |

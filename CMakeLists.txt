@@ -34,7 +34,8 @@ option(BLEEP_BUILD_TESTS  "Build the JUCE-free DSP tests" ON)
 add_library(bleep_dsp STATIC
     Source/dsp/SynthEngine.cpp
     Source/seq/Pattern.cpp
-    Source/seq/Sequencer.cpp)
+    Source/seq/Sequencer.cpp
+    Source/seq/Generator.cpp)
 target_include_directories(bleep_dsp PUBLIC Source)
 target_compile_features(bleep_dsp PUBLIC cxx_std_17)
 set_target_properties(bleep_dsp PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -71,11 +72,21 @@ if(BLEEP_BUILD_PLUGIN)
         AU_MAIN_TYPE              kAudioUnitType_MusicDevice
         COPY_PLUGIN_AFTER_BUILD   TRUE)
 
+    # Embedded fonts (SIL OFL, see Assets/Fonts/README.md) -> BinaryData::*
+    juce_add_binary_data(BleepAssets SOURCES
+        Assets/Fonts/BarlowCondensed-SemiBold.ttf
+        Assets/Fonts/BarlowCondensed-Medium.ttf
+        Assets/Fonts/BarlowCondensed-Regular.ttf
+        Assets/Fonts/BarlowCondensed-Light.ttf
+        Assets/Fonts/Michroma-Regular.ttf)
+    set_target_properties(BleepAssets PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
     target_sources(BLEEP001 PRIVATE
         Source/plugin/Parameters.cpp
         Source/plugin/PluginProcessor.cpp
         Source/plugin/PluginEditor.cpp
-        Source/plugin/StepGrid.cpp)
+        Source/plugin/StepGrid.cpp
+        Source/plugin/BleepLookAndFeel.cpp)
 
     target_compile_definitions(BLEEP001 PUBLIC
         JUCE_WEB_BROWSER=0
@@ -86,6 +97,7 @@ if(BLEEP_BUILD_PLUGIN)
     target_link_libraries(BLEEP001
         PRIVATE
             bleep_dsp
+            BleepAssets
             juce::juce_audio_utils
             juce::juce_audio_processors
         PUBLIC
@@ -106,6 +118,10 @@ if(BLEEP_BUILD_TESTS)
     add_executable(bleep_seq_tests tests/SequencerTests.cpp)
     target_link_libraries(bleep_seq_tests PRIVATE bleep_dsp)
     add_test(NAME sequencer COMMAND bleep_seq_tests)
+
+    add_executable(bleep_gen_tests tests/GeneratorTests.cpp)
+    target_link_libraries(bleep_gen_tests PRIVATE bleep_dsp)
+    add_test(NAME generator COMMAND bleep_gen_tests)
 endif()
 
 option(BLEEP_BUILD_PLUGIN_TESTS "Build headless tests of the JUCE processor" OFF)
@@ -118,4 +134,12 @@ if(BLEEP_BUILD_PLUGIN AND BLEEP_BUILD_PLUGIN_TESTS)
         $<TARGET_PROPERTY:BLEEP001,COMPILE_DEFINITIONS>)
     target_link_libraries(bleep_plugin_tests PRIVATE BLEEP001)
     add_test(NAME plugin COMMAND bleep_plugin_tests)
+
+    # Offscreen render of the editor to PNG (visual review / CI screenshot).
+    add_executable(bleep_ui_snapshot tests/UiSnapshot.cpp)
+    target_include_directories(bleep_ui_snapshot PRIVATE Source "${JUCE_DIR}/modules"
+        $<TARGET_PROPERTY:BLEEP001,INCLUDE_DIRECTORIES>)
+    target_compile_definitions(bleep_ui_snapshot PRIVATE
+        $<TARGET_PROPERTY:BLEEP001,COMPILE_DEFINITIONS>)
+    target_link_libraries(bleep_ui_snapshot PRIVATE BLEEP001)
 endif()

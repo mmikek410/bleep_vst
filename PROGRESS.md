@@ -35,10 +35,20 @@
 - [x] Classic keeps the original IDs (Blpa/Bl01, com.bleepaudio.bleep001)
 - [x] BLEEP 001 moved to new IDs (Blpa/Bl02, com.bleepaudio.bleep001.v2)
 - [x] CI builds both (matrix), uploads two artifacts, and runs a side-by-side install check (bundle IDs, VST3 class IDs, AU registration, pluginval on both)
-- [ ] **Cloud build green**
+- [ ] Cloud build green. The first attempt never started (GitHub had no macOS arm64 runners); it was rebuilt with Milestone 2.
 - [ ] User test: both appear in Live; a Phase 1 set opens with Classic
 
-### Milestone 2 — RANDOM, density, pitch range, probability, MUTATE, lock, undo
+### Milestone 2 — Generative (RANDOM / MUTATE)
+- [x] JUCE-free generator: motif-based RANDOM (density exact, range, locks, velocity, probability), MUTATE (amount-scaled, groove-preserving), deterministic seeds
+- [x] Undo/redo history (64) covering RANDOM, MUTATE, CLEAR, grid gestures and randomized sound
+- [x] Params gen_density, gen_range, gen_mutate, gen_rand_sound (state v3); IDs unchanged elsewhere
+- [x] RANDOMIZE SOUND limited to existing params (attack/decay/release); FM params later
+- [x] Step LOCK lane in the grid; velocity and probability shown on steps
+- [x] Visual identity: Michroma wordmark (direction C, chosen by user), Barlow Condensed UI, flat thin-line look-and-feel, fonts embedded with OFL notices
+- [x] Tests: generator suite; plugin tests for generating during playback, determinism, undo/redo, state save/reload, v2 compatibility
+- [x] Offscreen UI snapshot tool (visual review; CI artifact)
+- [ ] **Cloud build green**
+- [ ] **User test in Ableton**
 ### Milestone 3 — FM, pitch envelope, filter
 ### Milestone 4 — velocity, gate, ratchet, swing, snapshots A–D, scales
 ### Milestone 5 — LFO, delay, saturation, randomize sound
