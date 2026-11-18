@@ -1,0 +1,144 @@
+# Builds BLEEP / 001 for macOS Apple Silicon (arm64) on GitHub's runners,
+# runs every automated test, ad-hoc signs the bundles and uploads a ZIP.
+# No secrets are used or needed.
+
+name: Build macOS (arm64)
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore: [ '**.md' ]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  JUCE_TAG: 9.0.5
+  BUILD_DIR: build
+  PLUGIN_NAME: BLEEP 001
+
+jobs:
+  build:
+    runs-on: macos-15          # Apple Silicon (arm64) runner
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Toolchain info
+        run: |
+          sw_vers
+          uname -m
+          xcodebuild -version
+          cmake --version | head -1
+
+      - name: Cache JUCE
+        id: juce-cache
+        uses: actions/cache@v4
+        with:
+          path: external/JUCE
+          key: juce-${{ env.JUCE_TAG }}
+
+      - name: Fetch JUCE ${{ env.JUCE_TAG }}
+        if: steps.juce-cache.outputs.cache-hit != 'true'
+        run: git clone --depth 1 --branch "$JUCE_TAG" https://github.com/juce-framework/JUCE.git external/JUCE
+
+      - name: Configure
+        run: |
+          cmake -S . -B "$BUILD_DIR" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DBLEEP_BUILD_PLUGIN_TESTS=ON
+
+      # VST3 first: it is the priority format.
+      - name: Build VST3
+        run: cmake --build "$BUILD_DIR" --config Release --target BLEEP001_VST3 -j "$(sysctl -n hw.ncpu)"
+
+      - name: Build AU
+        id: build-au
+        continue-on-error: true
+        run: cmake --build "$BUILD_DIR" --config Release --target BLEEP001_AU -j "$(sysctl -n hw.ncpu)"
+
+      - name: Build tests
+        run: cmake --build "$BUILD_DIR" --config Release --target bleep_tests bleep_plugin_tests -j "$(sysctl -n hw.ncpu)"
+
+      - name: Run tests (DSP engine + headless processor)
+        run: ctest --test-dir "$BUILD_DIR" --output-on-failure
+
+      - name: Ad-hoc sign and verify bundles
+        run: |
+          ART="$BUILD_DIR/BLEEP001_artefacts/Release"
+          for bundle in "$ART/VST3/$PLUGIN_NAME.vst3" "$ART/AU/$PLUGIN_NAME.component"; do
+            [ -d "$bundle" ] || { echo "skip (not built): $bundle"; continue; }
+            codesign --force --deep --sign - --timestamp=none "$bundle"
+            codesign --verify --deep --strict --verbose=2 "$bundle"
+            lipo -info "$bundle/Contents/MacOS/$PLUGIN_NAME"
+          done
+
+      - name: Package ZIP
+        id: package
+        run: |
+          ART="$BUILD_DIR/BLEEP001_artefacts/Release"
+          SHORT_SHA="${GITHUB_SHA::7}"
+          STAGE="dist/BLEEP001-macOS-arm64"
+          mkdir -p "$STAGE"
+          # ditto keeps bundle structure, symlinks and signatures intact.
+          ditto "$ART/VST3/$PLUGIN_NAME.vst3" "$STAGE/$PLUGIN_NAME.vst3"
+          if [ -d "$ART/AU/$PLUGIN_NAME.component" ]; then
+            ditto "$ART/AU/$PLUGIN_NAME.component" "$STAGE/$PLUGIN_NAME.component"
+          fi
+          cp packaging/install.sh packaging/INSTALL.txt "$STAGE/"
+          chmod +x "$STAGE/install.sh"
+          echo "commit $GITHUB_SHA, JUCE $JUCE_TAG, built $(date -u +%Y-%m-%dT%H:%MZ)" > "$STAGE/BUILD_INFO.txt"
+          ZIP="BLEEP001-macOS-arm64-$SHORT_SHA.zip"
+          (cd dist && ditto -c -k --sequesterRsrc --keepParent "BLEEP001-macOS-arm64" "../$ZIP")
+          unzip -l "$ZIP"
+          echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BLEEP001-macOS-arm64
+          path: ${{ steps.package.outputs.zip }}
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0   # already a ZIP
+
+      # ---- Validation in a real plugin host (after upload, so the ZIP is kept either way) ----
+
+      - name: Fetch pluginval
+        run: |
+          curl -fsSL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip
+          unzip -q pluginval.zip
+
+      - name: pluginval VST3
+        run: |
+          ./pluginval.app/Contents/MacOS/pluginval --strictness-level 5 --skip-gui-tests \
+            --validate-in-process --output-dir pluginval-logs \
+            --validate "$BUILD_DIR/BLEEP001_artefacts/Release/VST3/$PLUGIN_NAME.vst3"
+
+      - name: auval (AU)
+        if: steps.build-au.outcome == 'success'
+        continue-on-error: true
+        run: |
+          # COPY_PLUGIN_AFTER_BUILD installed it to ~/Library/Audio/Plug-Ins/Components.
+          killall -9 AudioComponentRegistrar 2>/dev/null || true
+          sleep 2
+          auval -v aumu Bl01 Blpa
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## BLEEP / 001 macOS arm64"
+            echo "- VST3: built"
+            echo "- AU: ${{ steps.build-au.outcome }}"
+            echo "- Download: **Artifacts** section of this run → \`BLEEP001-macOS-arm64\`"
+          } >> "$GITHUB_STEP_SUMMARY"
