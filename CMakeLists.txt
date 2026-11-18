@@ -130,6 +130,10 @@ if(BLEEP_BUILD_TESTS)
     # Демо-WAV для оценки на слух (не тест): bleep_render_demos <папка>
     add_executable(bleep_render_demos tests/RenderDemos.cpp)
     target_link_libraries(bleep_render_demos PRIVATE bleep_dsp)
+
+    # Прототипы звука A/B/C и рецепты (сравнение на слух): bleep_render_prototypes <папка>
+    add_executable(bleep_render_prototypes tests/proto/RenderPrototypes.cpp)
+    target_link_libraries(bleep_render_prototypes PRIVATE bleep_dsp)
 endif()
 
 option(BLEEP_BUILD_PLUGIN_TESTS "Build headless tests of the JUCE processor" OFF)
