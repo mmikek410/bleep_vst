@@ -1,22 +1,21 @@
 BLEEP / 001 — macOS Apple Silicon (arm64) development build
 
+There are two separate plug-ins, and you can install both at once:
+  BLEEP 001          the current version, with the sequencer
+  BLEEP 001 Classic  the original Phase 1 synth. Ableton sets saved with Phase 1 open with this one.
+
 INSTALL
-1. Open Terminal and drag this folder's install.sh into it after typing "bash ", or run:
-       cd <this folder>
+1. Open Terminal, type "cd " (with a space), drag this folder into the window, and press Enter. Then run:
        bash install.sh
-   This copies the plug-ins to ~/Library/Audio/Plug-Ins/VST3 and /Components,
-   removes the macOS download quarantine and re-signs them for local use.
+   This copies the plug-in(s) in this folder to ~/Library/Audio/Plug-Ins/VST3 and
+   /Components, removes the macOS download quarantine and re-signs them for local use.
+   It only replaces a plug-in with exactly the same name, so the other version is not touched.
 
 2. Ableton Live 12: Settings > Plug-Ins
    - Turn on "Use VST3 Plug-in System Folders"
    - Turn on "Use Audio Units v2" if you want the AU too
    - Click "Rescan"
 
-3. Browser > Plug-Ins > BLEEP Audio > BLEEP 001. Drag it onto a MIDI track and play notes.
+3. Browser > Plug-Ins > BLEEP Audio > BLEEP 001 or BLEEP 001 Classic.
 
-MANUAL INSTALL (if you prefer)
-   Copy "BLEEP 001.vst3" to ~/Library/Audio/Plug-Ins/VST3/ then run:
-       xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/"BLEEP 001.vst3"
-
-This is an unsigned (ad-hoc) development build, so it will only run on a Mac
-where the quarantine flag has been removed as above.
+This is an unsigned (ad-hoc) development build.

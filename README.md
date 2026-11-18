@@ -4,6 +4,15 @@ Generative FM synthesizer with an integrated step sequencer, made for hypnotic, 
 
 **Current status: Phase 2, Milestone 1, the internal sequencer.** There's a 16-step sequencer synced to the host, with step on/off, pitch per step, length, rate, root and gate, plus INTERNAL/EXTERNAL modes. It plays the Phase 1 sine/ADSR voice. See `PROGRESS.md`.
 
+## Two plug-ins, installed side by side
+
+| Plug-in | What it is | Plugin code | Bundle ID | AU | Artifact |
+|---|---|---|---|---|---|
+| **BLEEP 001** | current development version (sequencer, …) | `Blpa` / `Bl02` | `com.bleepaudio.bleep001.v2` | `aumu Bl02 Blpa` | `BLEEP001-macOS-arm64` |
+| **BLEEP 001 Classic** | frozen Phase 1, in `classic/` | `Blpa` / `Bl01` | `com.bleepaudio.bleep001` | `aumu Bl01 Blpa` | `BLEEP001-Classic-macOS-arm64` |
+
+Ableton finds a plug-in by its codes, so **these must never change**. Sets saved with Phase 1, or with the Milestone 1 test build, which used `Bl01` too, open with Classic. Sets saved with BLEEP 001 from the `Bl02` builds onward open with BLEEP 001. Every CI run installs both on a clean Mac and checks that their bundle IDs, VST3 class IDs and AU codes all differ.
+
 ## Using the sequencer
 
 - **SEQ: EXTERNAL MIDI / INTERNAL** (header button). In External mode the synth plays incoming MIDI, exactly like Phase 1. In Internal mode the built-in sequencer plays whenever Live's transport runs. Incoming MIDI still plays on top.
@@ -48,6 +57,7 @@ Options: `CLEAN=1 bash build.sh` rebuilds from scratch. `UNIVERSAL=1 bash build.
 
 ```
 CMakeLists.txt        build definition; product codes are set at the top
+classic/              BLEEP 001 Classic: frozen Phase 1 source with its own CMakeLists (see classic/README.md)
 build.sh              one-command macOS build
 Source/dsp/           JUCE-free DSP engine (shared with tests and future products)
   Envelope.h          percussive ADSR (linear attack, exponential decay/release)
@@ -69,7 +79,7 @@ tests/SequencerTests.cpp sequencer timing, mid-song start, loop, tempo change, s
 tests/PluginTests.cpp headless processor tests (MIDI to audio, state round trip); -DBLEEP_BUILD_PLUGIN_TESTS=ON
 ```
 
-Design rules: no allocation, blocking locks or I/O on the audio thread. The engine receives note events, so the Phase 3 sequencer will feed the same engine through the same path. State is saved as XML with a `stateVersion` tag: 1 = Phase 1, 2 = adds the sequencer parameters and a `PATTERN` node. Phase 1 sets load with the sequencer off and the default pattern. Parameter IDs are never renamed. The Phase 1 rollback point is the `release/phase1` branch.
+Design rules: no allocation, blocking locks or I/O on the audio thread. The engine receives note events, so the Phase 3 sequencer will feed the same engine through the same path. State is saved as XML with a `stateVersion` tag: 1 = Phase 1, 2 = adds the sequencer parameters and a `PATTERN` node. Phase 1 sets load with the sequencer off and the default pattern. Parameter IDs are never renamed. The Phase 1 rollback point is the `release/phase1` branch, and it also ships as BLEEP 001 Classic.
 
 ## Developing without the plugin
 

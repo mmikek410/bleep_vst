@@ -30,6 +30,14 @@
 - [ ] **Cloud build green**
 - [ ] **User test in Ableton** (sync, loop, tempo change, save/reopen)
 
+### Preservation: BLEEP 001 Classic alongside BLEEP 001
+- [x] Phase 1 recovered from git `379315c` into `classic/` (13 files byte-identical; only PRODUCT_NAME changed)
+- [x] Classic keeps the original IDs (Blpa/Bl01, com.bleepaudio.bleep001)
+- [x] BLEEP 001 moved to new IDs (Blpa/Bl02, com.bleepaudio.bleep001.v2)
+- [x] CI builds both (matrix), uploads two artifacts, and runs a side-by-side install check (bundle IDs, VST3 class IDs, AU registration, pluginval on both)
+- [ ] **Cloud build green**
+- [ ] User test: both appear in Live; a Phase 1 set opens with Classic
+
 ### Milestone 2 — RANDOM, density, pitch range, probability, MUTATE, lock, undo
 ### Milestone 3 — FM, pitch envelope, filter
 ### Milestone 4 — velocity, gate, ratchet, swing, snapshots A–D, scales
@@ -37,4 +45,4 @@
 ### Milestone 6 — GUI refinement, presets, optimisation
 
 ## Decisions to confirm
-- Company name and the plugin/manufacturer codes (`Blpa` / `Bl01`) in CMakeLists.txt are placeholders. Change them before using the plugin in real projects.
+- Resolved: plugin codes are final. Bl01 = Classic, Bl02 = BLEEP 001. Never change them.

@@ -1,14 +1,18 @@
 cmake_minimum_required(VERSION 3.22)
 
 # ---------------------------------------------------------------------------
-# Product identity. Decide these BEFORE using the plugin in real projects:
-# changing the manufacturer/plugin codes later makes hosts treat it as a
-# different plugin, and saved Ableton sets will no longer find it.
+# Product identity. NEVER change these again: hosts identify the plugin by
+# manufacturer + plugin code, so changing them orphans saved Ableton sets.
+#
+#   BLEEP 001 (this project)  Blpa / Bl02  com.bleepaudio.bleep001.v2  (since Phase 2)
+#   BLEEP 001 Classic         Blpa / Bl01  com.bleepaudio.bleep001     (classic/, = Phase 1)
+#
+# Bl01 is permanently reserved for Classic so Phase 1 sets keep loading.
 # ---------------------------------------------------------------------------
 set(BLEEP_COMPANY_NAME      "BLEEP Audio")
 set(BLEEP_MANUFACTURER_CODE "Blpa")   # 4 chars, at least one uppercase
-set(BLEEP_PLUGIN_CODE       "Bl01")   # 4 chars, unique per product
-set(BLEEP_BUNDLE_ID         "com.bleepaudio.bleep001")
+set(BLEEP_PLUGIN_CODE       "Bl02")   # 4 chars, unique per product
+set(BLEEP_BUNDLE_ID         "com.bleepaudio.bleep001.v2")
 
 if(APPLE)
     # JUCE 9 / Xcode 27 require macOS 12 or newer.

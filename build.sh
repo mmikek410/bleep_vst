@@ -101,7 +101,7 @@ done
 killall -9 AudioComponentRegistrar >/dev/null 2>&1 || true
 
 step "AU validation"
-if auval -v aumu Bl01 Blpa > "$BUILD_DIR/auval.log" 2>&1; then
+if auval -v aumu Bl02 Blpa > "$BUILD_DIR/auval.log" 2>&1; then
     echo "auval: PASSED"
 else
     echo "auval: FAILED (see build/auval.log). VST3 is unaffected."
