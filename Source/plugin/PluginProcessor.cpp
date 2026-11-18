@@ -28,8 +28,22 @@ BleepAudioProcessor::BleepAudioProcessor()
     seqLength  = apvts.getRawParameterValue (id::seqLength);
     seqRoot    = apvts.getRawParameterValue (id::seqRoot);
     seqGate    = apvts.getRawParameterValue (id::seqGate);
+    fmRatio     = apvts.getRawParameterValue (id::fmRatio);
+    fmDepth     = apvts.getRawParameterValue (id::fmDepth);
+    fmFeedback  = apvts.getRawParameterValue (id::fmFeedback);
+    fmDecay     = apvts.getRawParameterValue (id::fmDecay);
+    pitchAmount = apvts.getRawParameterValue (id::pitchAmount);
+    pitchDecay  = apvts.getRawParameterValue (id::pitchDecay);
+    pitchCurve  = apvts.getRawParameterValue (id::pitchCurve);
+    filterMode  = apvts.getRawParameterValue (id::filterMode);
+    cutoff      = apvts.getRawParameterValue (id::cutoff);
+    resonance   = apvts.getRawParameterValue (id::resonance);
+    filterEnv   = apvts.getRawParameterValue (id::filterEnv);
+    filterDecay = apvts.getRawParameterValue (id::filterDecay);
     jassert (attack && decay && sustain && release && fineTune && outputGain
-             && seqMode && seqRate && seqLength && seqRoot && seqGate);
+             && seqMode && seqRate && seqLength && seqRoot && seqGate
+             && fmRatio && fmDepth && fmFeedback && fmDecay && pitchAmount && pitchDecay && pitchCurve
+             && filterMode && cutoff && resonance && filterEnv && filterDecay);
 
     audioPattern = patternStore.get();
     audioPatternVersion = patternStore.getVersion();
@@ -61,6 +75,19 @@ void BleepAudioProcessor::updateEngineParams() noexcept
     p.release      = release->load() * 0.001f;
     p.fineTune     = fineTune->load();
     p.outputGainDb = outputGain->load();
+
+    p.fmRatio     = fmRatio->load();
+    p.fmDepth     = fmDepth->load();
+    p.fmFeedback  = fmFeedback->load() * 0.01f;
+    p.fmDecay     = fmDecay->load() * 0.001f;
+    p.pitchAmount = pitchAmount->load();
+    p.pitchDecay  = pitchDecay->load() * 0.001f;
+    p.pitchCurve  = pitchCurve->load() * 0.01f;
+    p.filterMode  = filterMode->load() >= 0.5f ? 1 : 0;
+    p.cutoff      = cutoff->load();
+    p.resonance   = resonance->load() * 0.01f;
+    p.filterEnv   = filterEnv->load();
+    p.filterDecay = filterDecay->load() * 0.001f;
     engine.setParams (p);
 }
 
@@ -233,11 +260,46 @@ void BleepAudioProcessor::applySnapshot (const Snapshot& s)
 
 void BleepAudioProcessor::randomizeSound (bleep::seq::Rng& rng)
 {
-    // Musically safe ranges for short bleeps; no volume or tuning changes.
+    // Согласованный «бип-патч», а не независимые случайные ручки. Все диапазоны
+    // безопасны: громкость и подстройка не меняются, резонанс ограничен, индекс FM
+    // всё равно проходит через защиту от алиасинга в движке.
+    // (Правила по тембровым режимам ROUND / METALLIC / ... — в Phase D.)
+    namespace id = bleep::params::id;
+    auto pick = [&rng] (std::initializer_list<float> values)
+    {
+        const int i = rng.between (0, (int) values.size() - 1);
+        return *(values.begin() + i);
+    };
     const float u = rng.uniform();
-    setParamPlain (bleep::params::id::attack,  0.5f + 4.0f * rng.uniform() * rng.uniform());   // 0.5-4.5 ms, mostly snappy
-    setParamPlain (bleep::params::id::decay,   40.0f + 560.0f * u * u);                         // 40-600 ms, mostly short
-    setParamPlain (bleep::params::id::release, 30.0f + 270.0f * rng.uniform());                 // 30-300 ms
+
+    // Амплитуда: в основном коротко и щелчково.
+    setParamPlain (id::attack,  0.5f + 4.0f * rng.uniform() * rng.uniform());
+    setParamPlain (id::decay,   40.0f + 460.0f * u * u);
+    setParamPlain (id::release, 30.0f + 220.0f * rng.uniform());
+
+    // FM: преимущественно гармонические отношения, иногда «металл».
+    const bool metallic = rng.chance (0.25f);
+    setParamPlain (id::fmRatio,    metallic ? pick ({ 1.41f, 2.76f, 3.53f, 4.27f, 5.19f }) : pick ({ 0.5f, 1.0f, 1.0f, 2.0f, 2.0f, 3.0f, 4.0f }));
+    setParamPlain (id::fmDepth,    0.3f + 3.7f * std::pow (rng.uniform(), 1.5f));
+    setParamPlain (id::fmFeedback, rng.chance (0.7f) ? 0.0f : 40.0f * rng.uniform());
+    setParamPlain (id::fmDecay,    30.0f + 370.0f * rng.uniform() * rng.uniform());
+
+    // Огибающая высоты: в половине случаев выключена, иначе короткий «чирп».
+    if (rng.chance (0.5f))
+        setParamPlain (id::pitchAmount, 0.0f);
+    else
+    {
+        setParamPlain (id::pitchAmount, pick ({ 5.0f, 7.0f, 12.0f, 12.0f, 24.0f, -12.0f }));
+        setParamPlain (id::pitchDecay,  4.0f + 36.0f * rng.uniform());
+        setParamPlain (id::pitchCurve,  50.0f + 40.0f * rng.uniform());
+    }
+
+    // Фильтр: срез над басом и бочкой, умеренный резонанс.
+    setParamPlain (id::filterMode,  rng.chance (0.2f) ? 1.0f : 0.0f);
+    setParamPlain (id::cutoff,      1500.0f * std::pow (6.0f, rng.uniform()));   // 1.5..9 кГц
+    setParamPlain (id::resonance,   50.0f * rng.uniform());
+    setParamPlain (id::filterEnv,   2.5f * rng.uniform());
+    setParamPlain (id::filterDecay, 40.0f + 260.0f * rng.uniform());
 }
 
 void BleepAudioProcessor::randomizePattern (std::uint32_t seed)
@@ -334,8 +396,16 @@ void BleepAudioProcessor::setStateInformation (const void* data, int sizeInBytes
 
     // Parameters missing from older states (e.g. seq_* / gen_* in older sets) keep
     // their defaults, so old projects load with the sequencer off (External).
+    const int loadedVersion = (int) tree.getProperty (kStateVersionProp, 1);
     apvts.replaceState (tree);
     patternStore.set (pattern);
+
+    // Состояния до Phase A (версии 1–3) не знают о FM и фильтре: ставим
+    // «нейтральные» значения, чтобы такие проекты звучали точно как раньше.
+    if (loadedVersion < 4)
+        for (const auto& legacy : bleep::params::kPreSoundEngineValues)
+            if (auto* param = apvts.getParameter (legacy.id))
+                param->setValueNotifyingHost (param->convertTo0to1 (legacy.plainValue));
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

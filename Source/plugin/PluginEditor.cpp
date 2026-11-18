@@ -67,17 +67,49 @@ BleepAudioProcessorEditor::BleepAudioProcessorEditor (BleepAudioProcessor& p)
     addKnob (genKnobs, id::genRange, "RANGE");
     addKnob (genKnobs, id::genMutate, "MUTATION");
 
-    // --- Synth ---
-    addKnob (synthKnobs, id::attack, "ATTACK");
-    addKnob (synthKnobs, id::decay, "DECAY");
-    addKnob (synthKnobs, id::sustain, "SUSTAIN");
-    addKnob (synthKnobs, id::release, "RELEASE");
-    addKnob (synthKnobs, id::fineTune, "FINE");
-    addKnob (synthKnobs, id::outputGain, "OUTPUT");
+    // --- Synth: группы ---
+    {
+        auto& fm = addGroup ("FM");
+        addKnob (fm.knobs, id::fmRatio, "RATIO");
+        addKnob (fm.knobs, id::fmDepth, "DEPTH");
+        addKnob (fm.knobs, id::fmFeedback, "FEEDBACK");
+        addKnob (fm.knobs, id::fmDecay, "DECAY");
+
+        auto& pitch = addGroup ("PITCH");
+        addKnob (pitch.knobs, id::pitchAmount, "AMOUNT");
+        addKnob (pitch.knobs, id::pitchDecay, "DECAY");
+        addKnob (pitch.knobs, id::pitchCurve, "CURVE");
+
+        auto& filter = addGroup ("FILTER");
+        filterModeButton.setClickingTogglesState (true);
+        filterModeButton.setTooltip ("LP: low-pass. BP: band-pass (hollow, woody).");
+        filterModeButton.onStateChange = [this]
+        {
+            filterModeButton.setButtonText (filterModeButton.getToggleState() ? "BP" : "LP");
+        };
+        addAndMakeVisible (filterModeButton);
+        filterModeAttachment = std::make_unique<APVTS::ButtonAttachment> (p.getState(), id::filterMode, filterModeButton);
+        filterModeButton.setButtonText (filterModeButton.getToggleState() ? "BP" : "LP");
+        filter.extra = &filterModeButton;
+        addKnob (filter.knobs, id::cutoff, "CUTOFF");
+        addKnob (filter.knobs, id::resonance, "RESO");
+        addKnob (filter.knobs, id::filterEnv, "ENV");
+        addKnob (filter.knobs, id::filterDecay, "DECAY");
+
+        auto& amp = addGroup ("AMP");
+        addKnob (amp.knobs, id::attack, "ATTACK");
+        addKnob (amp.knobs, id::decay, "DECAY");
+        addKnob (amp.knobs, id::sustain, "SUSTAIN");
+        addKnob (amp.knobs, id::release, "RELEASE");
+
+        auto& out = addGroup ("OUT");
+        addKnob (out.knobs, id::fineTune, "FINE");
+        addKnob (out.knobs, id::outputGain, "OUTPUT");
+    }
 
     setResizable (true, true);
-    setResizeLimits (940, 560, 1900, 1200);
-    setSize (1120, 640);
+    setResizeLimits (1060, 620, 2000, 1250);
+    setSize (1240, 700);
     startTimerHz (10);
 }
 
@@ -105,6 +137,13 @@ BleepAudioProcessorEditor::Knob& BleepAudioProcessorEditor::addKnob (std::vector
     k->attachment = std::make_unique<APVTS::SliderAttachment> (processor.getState(), paramId, k->slider);
     group.push_back (std::move (k));
     return *group.back();
+}
+
+BleepAudioProcessorEditor::KnobGroup& BleepAudioProcessorEditor::addGroup (const juce::String& title)
+{
+    synthGroups.push_back (std::make_unique<KnobGroup>());
+    synthGroups.back()->title = title;
+    return *synthGroups.back();
 }
 
 void BleepAudioProcessorEditor::updateModeButton()
@@ -156,6 +195,21 @@ void BleepAudioProcessorEditor::paint (juce::Graphics& g)
     drawPanel (g, seqPanel, "SEQUENCER");
     drawPanel (g, genPanel, "GENERATE");
     drawPanel (g, synthPanel, "SYNTH");
+
+    // Подписи групп и тонкие разделители между ними.
+    for (size_t i = 0; i < synthGroups.size(); ++i)
+    {
+        const auto& grp = *synthGroups[i];
+        juce::GlyphArrangement ga;
+        ga.addLineOfText (lookAndFeel.fonts().title (8.5f), grp.title, (float) grp.bounds.getX() + 4.0f, (float) grp.bounds.getY() + 9.0f);
+        g.setColour (amber.withAlpha (0.8f));
+        ga.draw (g);
+        if (i > 0)
+        {
+            g.setColour (outline);
+            g.drawVerticalLine (grp.bounds.getX() - 8, (float) grp.bounds.getY() + 2.0f, (float) grp.bounds.getBottom() - 4.0f);
+        }
+    }
 }
 
 void BleepAudioProcessorEditor::layoutKnobRow (std::vector<std::unique_ptr<Knob>>& group, juce::Rectangle<int> area, int maxKnob)
@@ -191,7 +245,7 @@ void BleepAudioProcessorEditor::resized()
     area.removeFromTop (gutter);
     area.removeFromBottom (gutter);
 
-    synthPanel = area.removeFromBottom (150);
+    synthPanel = area.removeFromBottom (172);
     area.removeFromBottom (gutter);
     genPanel = area.removeFromRight (252);
     area.removeFromRight (gutter);
@@ -227,6 +281,28 @@ void BleepAudioProcessorEditor::resized()
     gen.removeFromBottom (8);
     layoutKnobRow (genKnobs, gen, 58);
 
-    // Synth row.
-    layoutKnobRow (synthKnobs, synthPanel.reduced (padding).withTrimmedTop (24), 62);
+    // Synth: группы в ряд; ширина пропорциональна числу ручек, переключатель — половина ручки.
+    {
+        auto synthRow = synthPanel.reduced (padding).withTrimmedTop (22);
+        const int groupGap = 16;
+        float units = 0.0f;
+        for (auto& grp : synthGroups)
+            units += (float) grp->knobs.size() + (grp->extra != nullptr ? 0.6f : 0.0f);
+        const float unitW = (float) (synthRow.getWidth() - groupGap * (int) (synthGroups.size() - 1)) / units;
+
+        for (auto& grp : synthGroups)
+        {
+            const float u = (float) grp->knobs.size() + (grp->extra != nullptr ? 0.6f : 0.0f);
+            grp->bounds = synthRow.removeFromLeft (juce::roundToInt (u * unitW));
+            synthRow.removeFromLeft (groupGap);
+
+            auto inner = grp->bounds.withTrimmedTop (14);
+            if (grp->extra != nullptr)
+            {
+                auto col = inner.removeFromLeft (juce::roundToInt (0.6f * unitW));
+                grp->extra->setBounds (col.withSizeKeepingCentre (juce::jmin (col.getWidth() - 6, 40), 26));
+            }
+            layoutKnobRow (grp->knobs, inner, 54);
+        }
+    }
 }

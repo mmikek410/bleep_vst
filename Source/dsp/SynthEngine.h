@@ -9,14 +9,10 @@
 namespace bleep::dsp
 {
 
-/** Plain parameter snapshot passed from the plugin each block. */
-struct EngineParams
+/** Снимок параметров, который плагин передаёт каждый блок.
+    Звуковые параметры голоса + выходная громкость. */
+struct EngineParams : VoiceParams
 {
-    float attack   = 0.001f;  // seconds
-    float decay    = 0.18f;   // seconds
-    float sustain  = 0.0f;    // 0..1
-    float release  = 0.12f;   // seconds
-    float fineTune = 0.0f;    // cents
     float outputGainDb = -6.0f;
 };
 

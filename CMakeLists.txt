@@ -122,6 +122,14 @@ if(BLEEP_BUILD_TESTS)
     add_executable(bleep_gen_tests tests/GeneratorTests.cpp)
     target_link_libraries(bleep_gen_tests PRIVATE bleep_dsp)
     add_test(NAME generator COMMAND bleep_gen_tests)
+
+    add_executable(bleep_sound_tests tests/SoundTests.cpp)
+    target_link_libraries(bleep_sound_tests PRIVATE bleep_dsp)
+    add_test(NAME sound COMMAND bleep_sound_tests)
+
+    # Демо-WAV для оценки на слух (не тест): bleep_render_demos <папка>
+    add_executable(bleep_render_demos tests/RenderDemos.cpp)
+    target_link_libraries(bleep_render_demos PRIVATE bleep_dsp)
 endif()
 
 option(BLEEP_BUILD_PLUGIN_TESTS "Build headless tests of the JUCE processor" OFF)

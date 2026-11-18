@@ -11,6 +11,20 @@ namespace
 
     // Headroom so several overlapping voices don't clip the output.
     constexpr float kVoiceHeadroom = 0.35f;
+
+    /** Защитный «потолок»: до 0.8 сигнал проходит без изменений, выше плавно
+        уходит в насыщение и никогда не превышает 1.0. Это не лимитер для микса,
+        а страховка от резонансных пиков; в нормальной работе он не срабатывает. */
+    inline float safetyCeiling (float x) noexcept
+    {
+        constexpr float knee = 0.8f;
+        const float a = std::abs (x);
+        if (a <= knee)
+            return x;
+        const float over = (a - knee) / (1.0f - knee);
+        const float shaped = knee + (1.0f - knee) * std::tanh (over);
+        return std::copysign (shaped, x);
+    }
 }
 
 void SynthEngine::prepare (double newSampleRate)
@@ -20,7 +34,7 @@ void SynthEngine::prepare (double newSampleRate)
     for (auto& v : voices)
     {
         v.prepare (sampleRate);
-        v.setEnvelope (params.attack, params.decay, params.sustain, params.release);
+        v.setParams (params);
     }
 
     outputGain.prepare (sampleRate, 0.02f);
@@ -31,7 +45,7 @@ void SynthEngine::setParams (const EngineParams& p) noexcept
 {
     params = p;
     for (auto& v : voices)
-        v.setEnvelope (p.attack, p.decay, p.sustain, p.release);
+        v.setParams (p);
     outputGain.setTarget (dbToGain (p.outputGainDb));
 }
 
@@ -99,12 +113,11 @@ void SynthEngine::render (float* out, int numSamples) noexcept
     for (int i = 0; i < numSamples; ++i)
         out[i] = 0.0f;
 
-    const float tuning = params.fineTune / 100.0f;
     for (auto& v : voices)
-        v.render (out, numSamples, tuning);
+        v.render (out, numSamples);
 
     for (int i = 0; i < numSamples; ++i)
-        out[i] *= kVoiceHeadroom * outputGain.next();
+        out[i] = safetyCeiling (out[i] * kVoiceHeadroom * outputGain.next());
 }
 
 int SynthEngine::getNumActiveVoices() const noexcept

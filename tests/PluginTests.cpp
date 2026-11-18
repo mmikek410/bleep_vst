@@ -9,6 +9,7 @@
 #include <juce_events/juce_events.h>
 
 #include <cstdio>
+#include <vector>
 
 static int failures = 0;
 #define CHECK(cond, msg) do { if (! (cond)) { ++failures; std::printf ("  FAIL: %s\n", msg); } } while (0)
@@ -333,6 +334,92 @@ int main()
         BleepAudioProcessor b;
         b.setStateInformation (v2.getData(), (int) v2.getSize());
         CHECK (near (getParam (b, id::genDensity), 40.0f) && near (getParam (b, id::genRandSound), 0.0f), "v2 state: generator defaults wrong");
+    }
+
+
+    std::printf ("Phase A: старые проекты (v1–v3) звучат как раньше — FM и фильтр нейтральны\n");
+    {
+        // Состояние версии 3 без новых параметров (как сохранял предыдущий билд).
+        BleepAudioProcessor a;
+        juce::MemoryBlock blob;
+        a.getStateInformation (blob);
+        auto xml = juce::AudioProcessor::getXmlFromBinary (blob.getData(), (int) blob.getSize());
+        xml->setAttribute ("stateVersion", 3);
+        for (const auto& legacy : bleep::params::kPreSoundEngineValues)
+            if (auto* e = xml->getChildByAttribute ("id", legacy.id))
+                xml->removeChildElement (e, true);
+        juce::MemoryBlock v3;
+        juce::AudioProcessor::copyXmlToBinary (*xml, v3);
+
+        BleepAudioProcessor b;
+        b.setStateInformation (v3.getData(), (int) v3.getSize());
+        for (const auto& legacy : bleep::params::kPreSoundEngineValues)
+            CHECK (near (getParam (b, legacy.id), legacy.plainValue) || std::abs (getParam (b, legacy.id) - legacy.plainValue) < 0.01f,
+                   "старый проект получил не нейтральное значение");
+
+        // Новый экземпляр — с новым звуком по умолчанию (FM включён).
+        BleepAudioProcessor fresh;
+        CHECK (getParam (fresh, id::fmDepth) > 0.5f, "новый экземпляр без FM");
+
+        // v4 сохраняет и восстанавливает звуковые параметры как есть.
+        setParam (fresh, id::fmRatio, 2.76f);
+        setParam (fresh, id::cutoff, 900.0f);
+        setParam (fresh, id::filterMode, 1.0f);
+        juce::MemoryBlock v4;
+        fresh.getStateInformation (v4);
+        BleepAudioProcessor c;
+        c.setStateInformation (v4.getData(), (int) v4.getSize());
+        CHECK (std::abs (getParam (c, id::fmRatio) - 2.76f) < 0.01f && std::abs (getParam (c, id::cutoff) - 900.0f) < 1.0f
+               && near (getParam (c, id::filterMode), 1.0f), "v4: звуковые параметры не восстановились");
+    }
+
+    std::printf ("Phase A: RANDOMIZE SOUND меняет FM/фильтр/высоту, UNDO возвращает всё\n");
+    {
+        BleepAudioProcessor p;
+        setParam (p, id::genRandSound, 1.0f);
+        std::vector<float> before;
+        for (auto* pid : BleepAudioProcessor::kSoundParams) before.push_back (getParam (p, pid));
+        const float out0 = getParam (p, id::outputGain), fine0 = getParam (p, id::fineTune), sus0 = getParam (p, id::sustain);
+
+        int changed = 0;
+        for (std::uint32_t seed = 1; seed <= 20; ++seed)
+        {
+            p.randomizePattern (seed);
+            for (size_t i = 0; i < before.size(); ++i)
+                changed += std::abs (getParam (p, BleepAudioProcessor::kSoundParams[i]) - before[i]) > 1e-3f ? 1 : 0;
+            CHECK (near (getParam (p, id::outputGain), out0) && near (getParam (p, id::fineTune), fine0)
+                   && near (getParam (p, id::sustain), sus0), "RANDOMIZE SOUND тронул громкость/строй/sustain");
+            CHECK (getParam (p, id::resonance) <= 50.0f, "резонанс вне безопасного диапазона");
+        }
+        CHECK (changed > 100, "RANDOMIZE SOUND почти ничего не меняет");
+        for (int i = 0; i < 20; ++i) p.undo();
+        for (size_t i = 0; i < before.size(); ++i)
+            CHECK (std::abs (getParam (p, BleepAudioProcessor::kSoundParams[i]) - before[i]) < 1e-3f,
+                   "UNDO не вернул звуковой параметр");
+    }
+
+    std::printf ("Phase A: случайные звуки во время воспроизведения — без NaN, пик <= 1\n");
+    {
+        BleepAudioProcessor p;
+        TestPlayHead ph;
+        p.setPlayHead (&ph);
+        p.setPlayConfigDetails (0, 2, 44100.0, 256);
+        p.prepareToPlay (44100.0, 256);
+        setParam (p, id::seqMode, 1.0f);
+        setParam (p, id::genRandSound, 1.0f);
+        setParam (p, id::genDensity, 80.0f);
+        float peak = 0.0f;
+        for (int i = 0; i < 40; ++i)
+        {
+            p.randomizePattern ((std::uint32_t) (i * 7 + 3));
+            if (i % 5 == 0) { setParam (p, id::resonance, 100.0f); setParam (p, id::fmDepth, 10.0f); setParam (p, id::fmFeedback, 100.0f); }
+            peak = std::max (peak, run (p, &ph, 40, 256, 44100.0));
+        }
+        std::printf ("  пик: %.3f\n", peak);
+        CHECK (peak > 0.01f && peak <= 1.0f, "уровень вне диапазона");
+        ph.playing = false;
+        run (p, &ph, 400, 256, 44100.0);
+        CHECK (silent (run (p, &ph, 16, 256, 44100.0)), "зависшая нота");
     }
 
     std::printf (failures == 0 ? "PLUGIN TESTS PASSED\n" : "%d PLUGIN TEST FAILURE(S)\n", failures);

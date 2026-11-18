@@ -62,7 +62,19 @@ private:
     std::unique_ptr<APVTS::ButtonAttachment> randSoundAttachment;
     std::vector<std::unique_ptr<Knob>> genKnobs;
 
-    std::vector<std::unique_ptr<Knob>> synthKnobs;
+    // Панель SYNTH: группы ручек с подписями (FM / PITCH / FILTER / AMP / OUT).
+    struct KnobGroup
+    {
+        juce::String title;
+        std::vector<std::unique_ptr<Knob>> knobs;
+        juce::Component* extra = nullptr;     // например, переключатель LP/BP
+        juce::Rectangle<int> bounds;          // вычисляется в resized()
+    };
+    KnobGroup& addGroup (const juce::String& title);
+    std::vector<std::unique_ptr<KnobGroup>> synthGroups;
+
+    juce::TextButton filterModeButton;
+    std::unique_ptr<APVTS::ButtonAttachment> filterModeAttachment;
 
     juce::Rectangle<int> headerArea, seqPanel, genPanel, synthPanel;
 

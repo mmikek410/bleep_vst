@@ -60,7 +60,7 @@ jobs:
         id: main
         run: |
           bash .github/scripts/build_variant.sh . "$GITHUB_WORKSPACE/build-main" "BLEEP 001" \
-            BLEEP001-macOS-arm64 Bl02 "bleep_tests bleep_seq_tests bleep_gen_tests bleep_plugin_tests"
+            BLEEP001-macOS-arm64 Bl02 "bleep_tests bleep_seq_tests bleep_gen_tests bleep_sound_tests bleep_plugin_tests"
           echo "zip=$(cat build-main/zip_path.txt)" >> "$GITHUB_OUTPUT"
 
       - name: BLEEP 001 - upload
@@ -85,6 +85,22 @@ jobs:
         with:
           name: BLEEP001-UI-screenshots
           path: ui-screenshots/*.png
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: BLEEP 001 - demo renders (WAV)
+        continue-on-error: true
+        run: |
+          cmake --build build-main --config Release --target bleep_render_demos -j "$(sysctl -n hw.ncpu)"
+          mkdir -p demo-renders
+          ./build-main/bleep_render_demos "$GITHUB_WORKSPACE/demo-renders"
+
+      - name: BLEEP 001 - upload demo renders
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: BLEEP001-demo-renders
+          path: demo-renders/*.wav
           if-no-files-found: ignore
           retention-days: 30
 

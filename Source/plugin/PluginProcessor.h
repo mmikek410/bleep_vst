@@ -8,6 +8,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include <array>
+#include <iterator>
 #include <atomic>
 #include <optional>
 
@@ -58,20 +59,25 @@ public:
     bool canUndo() const noexcept { return history.canUndo(); }
     bool canRedo() const noexcept { return history.canRedo(); }
 
-    /** Synth parameters RANDOMIZE SOUND may change (only ones that exist today).
-        FM depth/ratio and pitch envelope join once the FM engine lands. */
-    static constexpr const char* kSoundParams[] = { "amp_attack", "amp_decay", "amp_release" };
+    /** Параметры, которые меняет RANDOMIZE SOUND и которые сохраняются в UNDO.
+        Громкость, точная подстройка и sustain сюда сознательно не входят. */
+    static constexpr const char* kSoundParams[] = {
+        "amp_attack", "amp_decay", "amp_release",
+        "fm_ratio", "fm_depth", "fm_feedback", "fm_decay",
+        "pitch_amount", "pitch_decay", "pitch_curve",
+        "flt_mode", "flt_cutoff", "flt_res", "flt_env", "flt_decay" };
+    static constexpr size_t kNumSoundParams = std::size (kSoundParams);
 
     /** Step under the playhead for the UI, or -1 when the sequencer is not running. */
     int getCurrentStep() const noexcept { return currentStep.load (std::memory_order_relaxed); }
 
-    static constexpr int kStateVersion = 3;   // 1 = Phase 1, 2 = sequencer, 3 = generative params
+    static constexpr int kStateVersion = 4;   // 1 = Phase 1, 2 = sequencer, 3 = generative, 4 = FM/filter engine
 
 private:
     struct Snapshot
     {
         bleep::seq::Pattern pattern;
-        std::array<float, 3> sound {};   // plain values of kSoundParams
+        std::array<float, kNumSoundParams> sound {};   // значения kSoundParams в обычных единицах
     };
     Snapshot captureSnapshot() const;
     void applySnapshot (const Snapshot& s);
@@ -114,6 +120,20 @@ private:
     std::atomic<float>* seqLength = nullptr;
     std::atomic<float>* seqRoot = nullptr;
     std::atomic<float>* seqGate = nullptr;
+
+    // Phase A: звуковой движок
+    std::atomic<float>* fmRatio = nullptr;
+    std::atomic<float>* fmDepth = nullptr;
+    std::atomic<float>* fmFeedback = nullptr;
+    std::atomic<float>* fmDecay = nullptr;
+    std::atomic<float>* pitchAmount = nullptr;
+    std::atomic<float>* pitchDecay = nullptr;
+    std::atomic<float>* pitchCurve = nullptr;
+    std::atomic<float>* filterMode = nullptr;
+    std::atomic<float>* cutoff = nullptr;
+    std::atomic<float>* resonance = nullptr;
+    std::atomic<float>* filterEnv = nullptr;
+    std::atomic<float>* filterDecay = nullptr;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BleepAudioProcessor)
 };

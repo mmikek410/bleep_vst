@@ -2,7 +2,7 @@
 
 Generative FM synthesizer with an integrated step sequencer, made for hypnotic, raw, minimal and groove techno.
 
-**Current status: Phase 2, Milestone 2, generative.** A host-synced 16-step sequencer with RANDOM, MUTATE, DENSITY, PITCH RANGE, MUTATION, RANDOMIZE SOUND, step LOCK and UNDO/REDO, in a new interface with embedded fonts. It plays the Phase 1 sine/ADSR voice; FM comes in Milestone 3. See `PROGRESS.md`.
+**Current status: Sound Engine 2.0, Phase A.** The generative sequencer (RANDOM, MUTATE, LOCK, UNDO) now plays a new voice: 2-operator FM with feedback, a pitch envelope and a resonant LP/BP filter. See `PROGRESS.md` and `CHANGELOG.md`.
 
 ## Two plug-ins, installed side by side
 
@@ -24,6 +24,22 @@ The wordmark and section titles use **Michroma**. Controls and values use **Barl
 - **Rate** (1/4, 1/8, 1/16, 1/32), **LENGTH** (1–16 steps; odd lengths give polymetric loops against the bar), **ROOT** and **GATE** (note length as a percentage of a step).
 - **CLEAR** turns off every step that isn't locked.
 
+## Sound engine (Phase A)
+
+Each voice runs: **FM** (sine modulator with feedback into a sine carrier), then a **resonant filter**, then the **amp envelope**.
+
+| Group | Controls | What they do |
+|---|---|---|
+| FM | RATIO, DEPTH, FEEDBACK, DECAY | RATIO is the modulator frequency relative to the carrier: whole numbers give harmonic, round tones; values like 1.41 or 2.76 give metallic, inharmonic ones. DEPTH is the FM index (brightness). DECAY fades the index, so notes start bright and end mellow. FEEDBACK adds edge and, near 100 %, deliberate grit. Velocity also scales the index, so accents are brighter. |
+| PITCH | AMOUNT, DECAY, CURVE | Pitch sweep at note start, ±48 semitones. Short and positive gives chirps and lasers; negative gives rubbery, rising bleeps. CURVE goes from a linear sweep to a fast exponential drop. |
+| FILTER | LP/BP, CUTOFF, RESO, ENV, DECAY | Zero-delay-feedback state-variable filter, stable under fast modulation. BP gives hollow, woody tones. ENV (±6 octaves) and its DECAY shape each note. Resonance is capped below self-oscillation and its peak is level-compensated. |
+| AMP | ATTACK, DECAY, SUSTAIN, RELEASE | As before. |
+| OUT | FINE, OUTPUT | As before. |
+
+How the engine stays clean: the FM core runs **2× oversampled** and goes through a 47-tap halfband decimation filter. The FM index is limited per sample by Carson's rule, extended to account for feedback. Cutoff and depth are smoothed (5 ms), and coefficients are updated every 8 samples. A soft safety ceiling at 0.8–1.0 never touches normal levels. Projects saved before Phase A (state version < 4) load with neutral FM and filter settings, so they sound exactly as they did.
+
+`tests/RenderDemos.cpp` renders 8-bar demos at 140 BPM with an original, fully synthesized drum loop. CI uploads them as `BLEEP001-demo-renders`.
+
 ## Generating patterns
 
 - **RANDOM** writes a new 16-step pattern: active steps, pitch, velocity (shown as the brightness of each step) and probability (shown as a % in the step). It is built for hypnotic techno: a short motif of 3, 4, 6, 8 or 16 steps repeats across the bar, off-beats and anticipations are favoured over downbeats, and the root and small intervals dominate. Pitches come from minor-pentatonic degrees until the SCALE control arrives in Milestone 4.
@@ -31,7 +47,7 @@ The wordmark and section titles use **Michroma**. Controls and values use **Barl
 - **RANGE** limits generated pitches to ± that many semitones around ROOT.
 - **MUTATE** varies the current pattern by **MUTATION** amount. At around 10–20 % it changes one note, velocity or probability. At higher amounts it also moves hits to neighbouring steps, which shifts the groove but keeps it recognisable.
 - **LOCK** is the thin bar under each step's on/off square. RANDOM, MUTATE and CLEAR never touch locked steps.
-- **RANDOMIZE SOUND**: when it's on, RANDOM also sets attack, decay and release within short, safe ranges. It never touches volume or tuning. FM and pitch-envelope settings join once they exist.
+- **RANDOMIZE SOUND**: when it's on, RANDOM also builds a coordinated bleep patch: mostly harmonic FM ratios (sometimes metallic), moderate depth, an optional short pitch chirp, a filter above the kick and bass, and short envelopes. It never touches volume, tuning or sustain, and resonance stays at 50 % or below. Rules per timbre mode come in Phase D.
 - **UNDO / REDO** step back through RANDOM, MUTATE, CLEAR and grid edits, including sound changes, up to 64 steps. The history lasts until the plug-in is closed. The pattern itself is saved with the Live set.
 - Everything works while Live is playing. A new pattern takes effect from the next step with no dropout, because the audio thread never waits for the UI.
 - Note names follow Ableton's convention: MIDI 60 = C3.
@@ -76,7 +92,7 @@ classic/              BLEEP 001 Classic: frozen Phase 1 source with its own CMak
 build.sh              one-command macOS build
 Source/dsp/           JUCE-free DSP engine (shared with tests and future products)
   Envelope.h          percussive ADSR (linear attack, exponential decay/release)
-  Voice.h             one voice: sine oscillator + ADSR (FM and filter arrive in Phase 2)
+  Voice.h             one voice: 2-op FM (2× oversampled, Carson-limited) -> TPT SVF LP/BP -> ADSR; pitch env
   SynthEngine.*       8-voice allocation and stealing, output gain smoothing
   Smoother.h          one-pole parameter smoother
 Source/seq/           JUCE-free sequencer
@@ -94,13 +110,15 @@ Source/plugin/        JUCE wrapper
   Wordmark.h          BLEEP / 001 wordmark (all proportions in one Style struct)
 Assets/Fonts/         Michroma + Barlow Condensed (SIL OFL 1.1, licences included)
 tests/EngineTests.cpp offline render tests (sample rates, block sizes, clicks, NaN, leaks)
+tests/SoundTests.cpp  pitch accuracy, FM spectra, aliasing (FFT), pitch env, filter, stress, smoothing, CPU
+tests/RenderDemos.cpp WAV demos with an original drum loop (not a test)
 tests/GeneratorTests.cpp RANDOM density/range/locks/repetition, MUTATE strength, undo history
 tests/UiSnapshot.cpp  renders the editor to PNG offscreen (CI uploads it)
 tests/SequencerTests.cpp sequencer timing, mid-song start, loop, tempo change, stop, free-run, length, probability, encoding
 tests/PluginTests.cpp headless processor tests (MIDI to audio, state round trip); -DBLEEP_BUILD_PLUGIN_TESTS=ON
 ```
 
-Design rules: no allocation, blocking locks or I/O on the audio thread. The engine receives note events, so the Phase 3 sequencer will feed the same engine through the same path. State is saved as XML with a `stateVersion` tag: 1 = Phase 1, 2 = adds the sequencer parameters and a `PATTERN` node, 3 = adds the generator parameters. Phase 1 sets load with the sequencer off and the default pattern. Parameter IDs are never renamed. The Phase 1 rollback point is the `release/phase1` branch, and it also ships as BLEEP 001 Classic.
+Design rules: no allocation, blocking locks or I/O on the audio thread. The engine receives note events, so the Phase 3 sequencer will feed the same engine through the same path. State is saved as XML with a `stateVersion` tag: 1 = Phase 1, 2 = adds the sequencer parameters and a `PATTERN` node, 3 = adds the generator parameters, 4 = adds the FM, pitch-envelope and filter parameters (older states get neutral values for these). Phase 1 sets load with the sequencer off and the default pattern. Parameter IDs are never renamed. The Phase 1 rollback point is the `release/phase1` branch, and it also ships as BLEEP 001 Classic.
 
 ## Developing without the plugin
 

@@ -27,8 +27,8 @@
 - [x] State v2 with PATTERN node; Phase 1 states load (tested)
 - [x] Step grid UI with playhead, paint-drag, pitch drag
 - [x] Tests: sequencer suite, plugin suite with simulated playhead, backward compatibility
-- [ ] **Cloud build green**
-- [ ] **User test in Ableton** (sync, loop, tempo change, save/reopen)
+- [x] Cloud build green (run 44379522760)
+- [x] User test in Ableton: works. The user reports patterns sound too basic, which leads to Sound Engine 2.0. (sync, loop, tempo change, save/reopen)
 
 ### Preservation: BLEEP 001 Classic alongside BLEEP 001
 - [x] Phase 1 recovered from git `379315c` into `classic/` (13 files byte-identical; only PRODUCT_NAME changed)
@@ -56,3 +56,25 @@
 
 ## Decisions to confirm
 - Resolved: plugin codes are final. Bl01 = Classic, Bl02 = BLEEP 001. Never change them.
+
+## Sound Engine 2.0 (spec: "BLEEP / 001 — SOUND ENGINE 2.0")
+
+Diagnosis of why the previous version sounded plain:
+- One sine partial per note, so there was no timbre at all, only pitch.
+- No movement inside a note: no pitch, filter or brightness envelope; only amplitude changed.
+- Every note sounded the same; velocity only changed loudness.
+- Global gate and decay meant every step had the same length and shape.
+- RANDOM's pitch pool (pentatonic, ±12) favours melodic noodling over hypnotic repetition. That's Phase B.
+
+### Phase A — FM, pitch envelope, resonant filter
+- [x] 2-operator FM with feedback, harmonic and inharmonic ratios, index envelope, velocity to brightness
+- [x] Anti-aliasing: 2× oversampled FM core + 47-tap halfband decimator + Carson limit including feedback (measured by FFT in tests)
+- [x] Bipolar pitch envelope with decay and curve
+- [x] TPT SVF LP/BP, resonance capped and level-compensated, filter envelope ±6 oct, 5 ms smoothing
+- [x] 12 new params (IDs fm_*, pitch_*, flt_*; state v4); pre-v4 states load neutral (sound unchanged)
+- [x] RANDOMIZE SOUND creates coordinated FM, filter and pitch patches; UNDO covers them
+- [x] SYNTH panel regrouped: FM / PITCH / FILTER / AMP / OUT
+- [x] Tests: SoundTests (pitch < 0.5 ct at 3 SRs, sidebands, aliasing < -45..-50 dB below 16 kHz, pitch env, filter slopes, random-parameter stress, click-free smoothing, CPU); plugin tests for legacy sound, v4 round trip, randomize/undo, playback stress
+- [x] Demo renders with an original drum loop (CI artifact)
+- [ ] **Cloud build green**
+- [ ] **User listening test in Ableton**, then Phase B

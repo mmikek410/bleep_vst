@@ -25,7 +25,7 @@ int main (int argc, char** argv)
     processor.getPatternStore().modify ([] (bleep::seq::Pattern& p) { p.steps[2].locked = true; });
 
     std::unique_ptr<juce::AudioProcessorEditor> editor (processor.createEditorAndMakeActive());
-    for (auto size : { juce::Point<int> (1120, 640), juce::Point<int> (940, 560), juce::Point<int> (1600, 900) })
+    for (auto size : { juce::Point<int> (1240, 700), juce::Point<int> (1060, 620), juce::Point<int> (1600, 900) })
     {
         editor->setSize (size.x, size.y);
         auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, 2.0f);
